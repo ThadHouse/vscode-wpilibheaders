@@ -89,7 +89,10 @@ export function activate(context: vscode.ExtensionContext) {
             let parsed = JSON.parse(content);
             parsed.configurations.forEach(element => {
 
-                element.includePath = element.browse.path.concat(includeDirs);
+                element.includePath = includeDirs;
+                if (element.name === 'Win32') {
+                    element.intelliSenseMode = 'clang-x64'
+                }
             });
             let stringed = JSON.stringify(parsed, null, 4);
             await writeFileAsync(file.fsPath, stringed);
