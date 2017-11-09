@@ -69,43 +69,18 @@ export function activate(context: vscode.ExtensionContext) {
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "vscode-wpilibheaders" is now active!');
 
+    let headers = new WPILibHeaders();
+
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     let disposable = vscode.commands.registerCommand('wpilibheaders.updateHeaders', async () => {
         // The code you place here will be executed every time your command is executed
-
-        let gccInclude = await getGccIncludeDirectories();
-
-        await Promise.all(vscode.workspace.workspaceFolders.map(async wp => {
-            let relPatern = new RelativePattern(wp, "**/c_cpp_properties.json");
-            let files = await vscode.workspace.findFiles(relPatern);
-            if (files.length < 1) {
-                return;
-            }
-            let wpiHeaders = await getWpilibHeaders(wp.uri.fsPath);
-            let includeDirs = wpiHeaders.concat(gccInclude);
-            for (let file of files) {
-                let content = await readFileAsync(file.fsPath);
-                let parsed = JSON.parse(content);
-                parsed.configurations.forEach(element => {
-
-                    element.includePath = includeDirs;
-                    if (element.name === 'Win32') {
-                        element.intelliSenseMode = 'clang-x64'
-                    }
-                });
-                let stringed = JSON.stringify(parsed, null, 4);
-                await writeFileAsync(file.fsPath, stringed);
-                let x = 5;
-
-            }
-        }));
-
-        vscode.window.showInformationMessage('Finished getting includes');
+        await headers.run();
     });
 
     context.subscriptions.push(disposable);
+    context.subscriptions.push(headers);
 }
 
 // this method is called when your extension is deactivated
@@ -146,4 +121,61 @@ async function getGccIncludeDirectories(): Promise<string[]> {
     }
     console.log(r);
     return dirs;
+}
+
+class WPILibHeaders {
+    private _statusBarItem: vscode.StatusBarItem;
+
+    private running: boolean = false;
+
+    public async run(): Promise<void> {
+        if (this.running) {
+            vscode.window.showInformationMessage('Cannot run twice. Please wait for current header run to finish');
+            return;
+        }
+        this.running = true;
+
+        if (!this._statusBarItem) {
+            this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+        }
+
+        this._statusBarItem.text = 'Getting WPILib Headers'
+        this._statusBarItem.show();
+
+        let gccInclude = await getGccIncludeDirectories();
+
+        await Promise.all(vscode.workspace.workspaceFolders.map(async wp => {
+            let relPatern = new RelativePattern(wp, "**/c_cpp_properties.json");
+            let files = await vscode.workspace.findFiles(relPatern);
+            if (files.length < 1) {
+                return;
+            }
+            let wpiHeaders = await getWpilibHeaders(wp.uri.fsPath);
+            let includeDirs = wpiHeaders.concat(gccInclude);
+            for (let file of files) {
+                let content = await readFileAsync(file.fsPath);
+                let parsed = JSON.parse(content);
+                parsed.configurations.forEach(element => {
+
+                    element.includePath = includeDirs;
+                    if (element.name === 'Win32') {
+                        element.intelliSenseMode = 'clang-x64'
+                    }
+                });
+                let stringed = JSON.stringify(parsed, null, 4);
+                await writeFileAsync(file.fsPath, stringed);
+                let x = 5;
+
+            }
+        }));
+
+        this._statusBarItem.hide();
+        this.running = false;
+    }
+
+    dispose() {
+        if (this._statusBarItem) {
+            this._statusBarItem.dispose();
+        }
+    }
 }
