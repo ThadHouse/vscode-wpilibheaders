@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs'
 import * as path from 'path'
 import * as child_process from 'child_process'
+import { RelativePattern } from 'vscode';
 
 function readFileAsync(file : string) : Promise<string> {
     return new Promise(function (resolve, reject) {
@@ -74,34 +75,34 @@ export function activate(context: vscode.ExtensionContext) {
     let disposable = vscode.commands.registerCommand('wpilibheaders.updateHeaders', async () => {
         // The code you place here will be executed every time your command is executed
 
-        let files = await vscode.workspace.findFiles("**/c_cpp_properties.json");
-
         let gccInclude = await getGccIncludeDirectories();
 
-        let wpRoot = vscode.workspace.workspaceFolders[0];
+        await Promise.all(vscode.workspace.workspaceFolders.map(async wp => {
+            let relPatern = new RelativePattern(wp, "**/c_cpp_properties.json");
+            let files = await vscode.workspace.findFiles(relPatern);
+            if (files.length < 1) {
+                return;
+            }
+            let wpiHeaders = await getWpilibHeaders(wp.uri.fsPath);
+            let includeDirs = wpiHeaders.concat(gccInclude);
+            for (let file of files) {
+                let content = await readFileAsync(file.fsPath);
+                let parsed = JSON.parse(content);
+                parsed.configurations.forEach(element => {
 
-        let wpiHeaders = await getWpilibHeaders(wpRoot.uri.fsPath);
+                    element.includePath = includeDirs;
+                    if (element.name === 'Win32') {
+                        element.intelliSenseMode = 'clang-x64'
+                    }
+                });
+                let stringed = JSON.stringify(parsed, null, 4);
+                await writeFileAsync(file.fsPath, stringed);
+                let x = 5;
 
-        let includeDirs = wpiHeaders.concat(gccInclude);
+            }
+        }));
 
-        for (let file of files) {
-            let content = await readFileAsync(file.fsPath);
-            let parsed = JSON.parse(content);
-            parsed.configurations.forEach(element => {
-
-                element.includePath = includeDirs;
-                if (element.name === 'Win32') {
-                    element.intelliSenseMode = 'clang-x64'
-                }
-            });
-            let stringed = JSON.stringify(parsed, null, 4);
-            await writeFileAsync(file.fsPath, stringed);
-            let x = 5;
-
-        }
-
-        // Display a message box to the user
-        vscode.window.showInformationMessage('Hello World!');
+        vscode.window.showInformationMessage('Finished getting includes');
     });
 
     context.subscriptions.push(disposable);
